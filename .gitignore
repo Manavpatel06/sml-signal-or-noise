@@ -1,0 +1,20 @@
+# data and outputs (download with scripts/download_data.py)
+data/*
+!data/.gitkeep
+results/*
+!results/.gitkeep
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
