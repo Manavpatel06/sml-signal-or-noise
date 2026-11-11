@@ -30,8 +30,10 @@ components, which mostly describe those outlier nodes. On the bench
 (data before 20 March, 5 folds) a fixed k = 5 with normalised residuals
 gave AUC 0.86 vs 0.71 for the 95% rule, so k = 5 is the default;
 ``n_components=None`` restores the variance rule. k was chosen on the same
-folds that are reported, so report it as tuned (see scripts/role3_experiments.py
-for the score-vs-k curve).
+folds that are reported, so report it as tuned. The curve is not smooth:
+k = 3 gives 0.82, k = 5 gives 0.86, k = 8 drops to 0.79 and k = 10-30 sit
+around 0.79-0.82, all above the k-sigma baseline (0.75). See
+scripts/role3_experiments.py and results/role3/pca_auc_vs_k.png.
 
 Only numpy.linalg.svd is used (own PCA, no sklearn).
 """

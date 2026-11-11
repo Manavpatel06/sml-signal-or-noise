@@ -33,7 +33,7 @@ pytest -q                            # tests; unimplemented detectors are skippe
 | --- | --- | --- | --- |
 | 1 Data, harness & integration | Manav | `data/`, `preprocess.py`, `evaluation/`, `imputation/simple.py`, `detectors/ksigma.py`, `scripts/` | done (branch `role1-data-harness`, merged) |
 | 2 Detectors I | Rashi | `detectors/knn.py`, `detectors/kmeans.py` | TODO |
-| 3 Detectors II | Karthik | `detectors/pca.py`, `detectors/hmm.py` | TODO |
+| 3 Detectors II | Karthik | `detectors/pca.py`, `detectors/hmm.py` | done (branch `role3-pca-hmm`) |
 | 4 EM & imputation | Harsh | `detectors/gmm.py`, `imputation/em_gaussian.py` | TODO |
 | 5 Discrimination | Tejas | `discrimination/features.py`, `discrimination/classifiers.py` | TODO |
 | 6 Evaluation & results | Ziyad | `injection/inject.py` (v0 works), experiments, figures, results table | extend |
