@@ -38,7 +38,7 @@ pytest -q                            # tests; unimplemented detectors are skippe
 | 5 Discrimination | Tejas | `discrimination/features.py`, `discrimination/classifiers.py` | TODO |
 | 6 Evaluation & results | Ziyad | `injection/inject.py` (v0 works), experiments, figures, results table | extend |
 
-Each module starts with a docstring describing what it does and how.
+Every stub file starts with a docstring that specifies exactly what to build.
 Cross-review pairs: Manav ↔ Ziyad, Rashi ↔ Karthik, Harsh ↔ Tejas.
 
 ## How the pieces fit
@@ -94,13 +94,13 @@ contract tests in `tests/test_detectors.py` pick it up automatically.
 Every learned detector should beat this. Events are the hard class for a
 per-node threshold, which is the point of the project.
 
-## Implementation notes
+## Rules from the course
 
-- Every detector and classifier is **written from scratch**. We use NumPy / SciPy
-  for arrays and linear algebra, pandas for loading and matplotlib for figures,
-  but not scikit-learn, hmmlearn or similar libraries for the methods themselves.
-- The report lists which code is ours and which is third-party.
-- Timeline: results consolidated Nov 16–22, presentation Nov 23 – Dec 2, report due Dec 7.
+- All detectors and classifiers are **our own implementations**. NumPy / SciPy for
+  arrays and linear algebra, pandas for loading, matplotlib for figures. No
+  scikit-learn, hmmlearn, or similar for the methods themselves.
+- The final report must say which code is ours and which is third-party.
+- Key dates: results consolidated Nov 16–22, presentation Nov 23 – Dec 2, report due Dec 7.
 
 ## Git workflow
 
