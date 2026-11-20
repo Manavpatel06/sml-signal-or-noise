@@ -46,6 +46,16 @@ def ffill_both(train: np.ndarray, test: np.ndarray):
     return ffill_impute(train), ffill_impute(test)
 
 
+def em_both(train: np.ndarray, test: np.ndarray):
+    """EM Gaussian imputation (Role 4) fitted on the training window only."""
+    from signoise.imputation.em_gaussian import EMGaussianImputer
+    imp = EMGaussianImputer().fit(train)
+    return ffill_impute(imp.transform(train)), ffill_impute(imp.transform(test))
+
+
+IMPUTERS = {"ffill": ffill_both, "em": em_both}
+
+
 def make_detector(spec) -> Detector:
     """spec: registry name, (name, kwargs) tuple, or a Detector instance."""
     if isinstance(spec, Detector):
