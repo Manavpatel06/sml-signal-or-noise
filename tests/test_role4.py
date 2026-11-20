@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from signoise.detectors.gmm import GMMDetector, bic_curve
+from signoise.detectors.gmm import GMMDetector, bic_curve, elbow_k
 from signoise.imputation import EMGaussianImputer, ffill_impute, masking_benchmark
 
 
@@ -175,3 +175,90 @@ def test_em_imputer_requires_fit_and_supports_joint_channels():
         EMGaussianImputer().transform(Xm)
     out = EMGaussianImputer(per_channel=False).fit_transform(Xm)
     assert out.shape == X.shape and np.isfinite(out).all()
+
+
+# ------------------------------------------------- additional edge cases
+def test_gmm_survives_duplicate_heavy_data():
+    """Quantised / forward-filled data has exact duplicates; fitting must stay finite."""
+    rng = np.random.default_rng(0)
+    base = rng.normal(size=(40, 2))
+    P = np.vstack([np.repeat(base, 30, axis=0), rng.normal(5.0, 1.0, size=(300, 2))])
+    det = GMMDetector(n_components=6, seed=0)
+    det._fit_points(P)
+    assert np.isfinite(det.lower_bound_)
+    assert np.isfinite(det._score_points(P)).all()
+    assert np.isclose(det.weights_.sum(), 1.0)
+    for cov in det.covariances_:
+        assert np.linalg.eigvalsh(cov).min() > 0
+
+
+def test_gmm_channels_plus_diff_features_and_clip():
+    rng = np.random.default_rng(1)
+    X = rng.standard_normal((300, 5, 3))
+    for kwargs in ({"features": "channels+diff"}, {"clip": 4.0}):
+        det = GMMDetector(n_components=3, **kwargs).fit(X)
+        s = det.score(X)
+        assert s.shape == (300, 5) and np.isfinite(s).all()
+    X2 = X.copy()
+    X2[100, 2, :] = 50.0  # one absurd reading scores far above normal cells
+    det = GMMDetector(n_components=3, clip=10.0, features="channels+diff").fit(X)
+    s = det.score(X2)
+    assert s[100, 2] > np.percentile(s, 99.9)
+
+
+def test_gmm_detects_injected_shift_better_than_chance():
+    from signoise.evaluation.metrics import roc_auc
+    rng = np.random.default_rng(2)
+    X = rng.standard_normal((400, 6, 3))
+    Xt = rng.standard_normal((200, 6, 3))
+    y = np.zeros((200, 6), dtype=bool)
+    y[50:60, 1] = True
+    Xt[50:60, 1, :] += 6.0
+    det = GMMDetector(n_components=2).fit(X)
+    assert roc_auc(y, det.score(Xt)) > 0.95
+
+
+def test_gmm_rejects_too_few_points():
+    with pytest.raises(ValueError):
+        GMMDetector(n_components=5)._fit_points(np.zeros((3, 2)))
+
+
+def test_elbow_k_rule():
+    assert elbow_k({1: 235, 2: 181, 4: 164, 8: 154, 16: 150, 32: 146}) == 8
+    assert elbow_k({1: 100, 2: 50, 3: 60, 4: 70}) == 2   # true minimum at 2
+    assert elbow_k({1: 5.0}) == 1
+
+
+def test_em_imputer_converged_flags_and_determinism():
+    X = _correlated_tensor()
+    Xm, _ = _punch_holes(X)
+    a = EMGaussianImputer(tol=1e-2, max_iter=200).fit(Xm)
+    b = EMGaussianImputer(tol=1e-2, max_iter=200).fit(Xm)
+    assert all(a.converged_)
+    assert np.allclose(a.transform(Xm), b.transform(Xm))
+    c = EMGaussianImputer(tol=0.0, max_iter=3).fit(Xm)
+    assert not any(c.converged_) and all(len(t) == 3 for t in c.loglik_)
+
+
+def test_em_imputer_handles_all_nan_window_and_node():
+    X = _correlated_tensor()
+    imp = EMGaussianImputer().fit(X[:300])
+    out = imp.transform(np.full((10, X.shape[1], X.shape[2]), np.nan))
+    assert np.isfinite(out).all()                       # everything missing
+    Xm = X.copy()
+    Xm[:, 3, 0] = np.nan                                # one node never observed
+    out = EMGaussianImputer().fit_transform(Xm)
+    assert np.isfinite(out).all()
+    # A never-observed node has no learned correlations, so it is filled near
+    # its centre: no worse than predicting that centre (data std is about 2).
+    assert np.sqrt(np.mean((out[:, 3, 0] - X[:, 3, 0]) ** 2)) < 3.0
+
+
+def test_em_imputer_does_not_use_test_window_for_fit():
+    """transform() must not change the fitted parameters (no leakage)."""
+    X = _correlated_tensor()
+    Xm, _ = _punch_holes(X)
+    imp = EMGaussianImputer().fit(Xm[:300])
+    mu0, S0 = imp.means_[0].copy(), imp.covariances_[0].copy()
+    imp.transform(Xm[300:] + 50.0)
+    assert np.array_equal(mu0, imp.means_[0]) and np.array_equal(S0, imp.covariances_[0])

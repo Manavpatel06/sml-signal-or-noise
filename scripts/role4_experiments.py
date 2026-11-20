@@ -4,6 +4,7 @@ Writes CSV tables and PNG figures to results/role4/:
   masking_rmse.csv / masking_rmse.png   RMSE per channel, EM vs ffill, block 1/6/24
   gmm_bic.csv / gmm_bic.png             BIC vs K on each fold's training window
   gmm_k_sweep.csv / gmm_auc_vs_k.png    bench AUC vs K, with and without diff features
+  gmm_variants.csv                      GMM variants vs k-sigma, paired over folds
 
 Same setup as scripts/run_bench.py (data before 2004-03-20, 5 folds, magnitude 4,
 seed 0), so numbers are comparable with the bench table.
@@ -35,11 +36,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+from scipy import stats  # noqa: E402
 
 from signoise.config import CHANNELS, HUMID, LIGHT, RESULTS_DIR, TEMP  # noqa: E402
 from signoise.data import load_intel  # noqa: E402
 from signoise.data.splits import temporal_folds  # noqa: E402
-from signoise.detectors.gmm import GMMDetector, bic_curve  # noqa: E402
+from signoise.detectors.gmm import GMMDetector, bic_curve, elbow_k  # noqa: E402
 from signoise.evaluation import run_detection_bench  # noqa: E402
 from signoise.imputation import EMGaussianImputer, ffill_impute, masking_benchmark  # noqa: E402
 from signoise.preprocess import Standardizer  # noqa: E402
@@ -69,6 +71,8 @@ def masking_study(data, args, out):
     for f, (tr, te) in enumerate(temporal_folds(data.shape[0], args.folds)):
         Xtr, Xte = data.values[tr], data.values[te]
         em = EMGaussianImputer().fit(Xtr)
+        print(f"  imputer fold {f}: iterations {[len(t) for t in em.loglik_]}, "
+              f"converged {em.converged_}")
         z = em.scaler_.transform(Xte)  # training-window robust z-scores
         keep = em._plausible(Xte) & (np.abs(z) <= em.clip_z)
         Xte_clean = np.where(keep, Xte, np.nan)
@@ -129,15 +133,20 @@ def gmm_bic(data, args, out):
         P = Z.reshape(-1, Z.shape[2])
         P = np.clip(P, -args.clip, args.clip)
         P = P[rng.choice(len(P), size=min(len(P), 20000), replace=False)]
-        curve = bic_curve(P, ks=args.ks, seed=args.seed, max_points=None)
+        curve = bic_curve(P, ks=args.bic_ks, seed=args.seed, max_points=None)
         rows += [{"fold": f, "k": k, "bic": b} for k, b in curve.items()]
-        print(f"bic fold {f}: best K = {min(curve, key=curve.get)}")
+        print(f"bic fold {f}: lowest at K = {min(curve, key=curve.get)}, "
+              f"elbow (90% of drop) at K = {elbow_k(curve)}")
     df = pd.DataFrame(rows)
     df.to_csv(out / "gmm_bic.csv", index=False)
     g = df.groupby("k")["bic"]
     fig, ax = plt.subplots(figsize=(7, 4), facecolor=SURFACE)
     ax.fill_between(g.min().index, g.min(), g.max(), color=COLORS["auc"], alpha=0.15, lw=0)
     ax.plot(g.mean().index, g.mean(), color=COLORS["auc"], lw=2, marker="o", ms=4)
+    ax.set_xscale("log", base=2)
+    ax.set_xticks(args.bic_ks)
+    ax.set_xticklabels([str(k) for k in args.bic_ks])
+    ax.minorticks_off()
     style(ax, f"GMM: BIC vs number of components (clip +-{args.clip:g}, lower is better)",
           "number of components K", "BIC (mean, band = range over folds)")
     fig.tight_layout()
@@ -180,6 +189,39 @@ def gmm_k_sweep(data, args, out, ks_ref):
     return df
 
 
+def gmm_variants(data, args, out):
+    """Compare GMM settings with k-sigma on the same folds (paired)."""
+    variants = {"ksigma": "ksigma"}
+    for feat in ("channels", "channels+diff"):
+        for clip in (None, 6.0):
+            variants[f"gmm {feat} clip={clip}"] = (
+                "gmm", {"features": feat, "clip": clip, "n_components": 5,
+                        "seed": args.seed})
+    rows = []
+    for name, spec in variants.items():
+        r = run_detection_bench(
+            data, detectors=[spec], n_folds=args.folds, seed=args.seed, verbose=False,
+            inject_kwargs={"magnitude": args.magnitude, "n_events": 10, "n_failures": 10})
+        r["variant"] = name
+        rows.append(r)
+    df = pd.concat(rows, ignore_index=True)
+    ks = df[df.variant == "ksigma"].sort_values("fold")
+    out_rows = []
+    for name in variants:
+        x = df[df.variant == name].sort_values("fold")
+        d_auc = x["auc"].to_numpy() - ks["auc"].to_numpy()
+        p = (stats.ttest_rel(x["auc"], ks["auc"]).pvalue if name != "ksigma" else np.nan)
+        out_rows.append({
+            "variant": name, "auc": x["auc"].mean(), "auc_event": x["auc_event"].mean(),
+            "auc_failure": x["auc_failure"].mean(),
+            "precision_at_k": x["precision_at_k"].mean(),
+            "d_auc_vs_ksigma": d_auc.mean(), "paired_t_p": p,
+            "folds_won": int((d_auc > 0).sum())})
+    table = pd.DataFrame(out_rows).round(3)
+    table.to_csv(out / "gmm_variants.csv", index=False)
+    return table
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--folds", type=int, default=5)
@@ -187,7 +229,10 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--end", default="2004-03-20")
     ap.add_argument("--blocks", type=int, nargs="+", default=[1, 6, 24])
-    ap.add_argument("--ks", type=int, nargs="+", default=[1, 2, 3, 4, 5, 6, 8])
+    ap.add_argument("--ks", type=int, nargs="+", default=[1, 2, 3, 4, 5, 6, 8],
+                    help="K grid for the AUC sweep")
+    ap.add_argument("--bic-ks", type=int, nargs="+", default=[1, 2, 4, 8, 16, 32],
+                    help="K grid for the BIC curve")
     ap.add_argument("--clip", type=float, default=10.0, help="GMM feature clip")
     ap.add_argument("--skip-gmm", action="store_true")
     ap.add_argument("--skip-masking", action="store_true")
@@ -205,6 +250,8 @@ def main() -> None:
         bic = gmm_bic(data, args, out)
         print("\nBIC (mean over folds):")
         print(bic.groupby("k")["bic"].mean().round(0).to_string())
+        print("\nGMM variants vs k-sigma (paired over folds):")
+        print(gmm_variants(data, args, out).to_string(index=False))
         ks_ref = run_detection_bench(
             data, detectors=["ksigma"], n_folds=args.folds, seed=args.seed,
             verbose=False,

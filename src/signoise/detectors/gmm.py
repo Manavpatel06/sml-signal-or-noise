@@ -20,6 +20,13 @@ EM recap (P is n x d, K components, theta = {pi_k, mu_k, Sigma_k}):
   The mean log-likelihood never decreases (up to the tiny ridge), and EM stops
   when its gain falls below ``tol``.
 
+Choosing K. BIC has a clear minimum on data that really are a Gaussian mixture
+(see tests), but not on this sensor data: readings are skewed, heavy-tailed and
+quantised (light has ~14k distinct values in 200k readings), so BIC keeps
+falling out to K >= 32 and flattens rather than turning up. ``elbow_k`` picks
+the smallest K that achieves a given fraction of the total BIC drop, which is
+how K is chosen from the curve. The AUC-vs-K curve also levels off near K=4..6.
+
 Fitted attributes: weights_ (K,), means_ (K, d), covariances_ (K, d, d),
 lower_bound_ (best mean log-likelihood per point), log_likelihood_trace_
 (mean log-likelihood at each EM iteration of the best restart).
@@ -194,3 +201,19 @@ def bic_curve(P: np.ndarray, ks=range(1, 9), **kwargs) -> dict[int, float]:
         det._fit_points(P)
         out[int(k)] = det.bic(P)
     return out
+
+
+def elbow_k(curve: dict[int, float], frac: float = 0.9) -> int:
+    """Smallest K whose BIC achieves ``frac`` of the total BIC drop.
+
+    The drop is measured from the first K in ``curve`` to the lowest BIC in it.
+    With a true minimum this returns a K at or before the minimum; when BIC
+    only flattens (as on the sensor data) it returns the knee of the curve.
+    """
+    ks = sorted(curve)
+    first, lowest = curve[ks[0]], min(curve.values())
+    target = first - frac * (first - lowest)
+    for k in ks:
+        if curve[k] <= target:
+            return int(k)
+    return int(ks[-1])
