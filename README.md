@@ -25,7 +25,14 @@ python scripts/download_data.py      # ~34 MB into data/raw/ (not committed)
 python scripts/profile_data.py       # missingness + voltage tables and plot -> results/profile/
 python scripts/run_bench.py          # detector bench on injected anomalies -> results/bench.csv
 pytest -q                            # tests; unimplemented detectors are skipped
+python scripts/experiments/run_all.py   # every number and figure in the report -> results/RESULTS.md (~40 min)
 ```
+
+`run_all.py --quick` is a 1-minute smoke test with fewer seeds. The pieces can
+also be run alone: `magnitude_sweep.py`, `repeated_cv.py`, `hard_variants.py`,
+`ablation.py` in `scripts/experiments/`. Detectors are fitted once per fold and
+reused across magnitudes and seeds, so the numbers match `run_bench.py` exactly
+for the same seed.
 
 ## Team and ownership
 
@@ -36,7 +43,7 @@ pytest -q                            # tests; unimplemented detectors are skippe
 | 3 Detectors II | Karthik | `detectors/pca.py`, `detectors/hmm.py` | done (branch `role3-pca-hmm`) |
 | 4 EM & imputation | Harsh | `detectors/gmm.py`, `imputation/em_gaussian.py` | TODO |
 | 5 Discrimination | Tejas | `discrimination/features.py`, `discrimination/classifiers.py` | TODO |
-| 6 Evaluation & results | Ziyad | `injection/inject.py` (v0 works), experiments, figures, results table | extend |
+| 6 Evaluation & results | Ziyad | `injection/inject.py`, `scripts/experiments/`, figures, `results/RESULTS.md` | done (branch `role6-evaluation`) |
 
 Each module starts with a docstring describing what it does and how.
 Cross-review pairs: Manav ↔ Ziyad, Rashi ↔ Karthik, Harsh ↔ Tejas.
