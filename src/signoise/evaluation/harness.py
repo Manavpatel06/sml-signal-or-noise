@@ -98,13 +98,14 @@ def run_detection_bench(
         Xtr, Xte = imputer(data.values[tr], data.values[te])
         scaler = Standardizer(per_node=True).fit(Xtr)
         Ztr, Zte = scaler.transform(Xtr), scaler.transform(Xte)
-        Zinj, labels, episodes = inject_anomalies(
-            Zte, neighbors, seed=seed + fold, **inject_kwargs)
-        ch = list(detect_channels)
-        Ztr_d, Zinj_d = Ztr[:, :, ch], Zinj[:, :, ch]
         valid = observed[te].copy()
         if real is not None:
             valid &= ~real[te]
+        # valid is only read by inject_anomalies when quiet_only=True
+        Zinj, labels, episodes = inject_anomalies(
+            Zte, neighbors, seed=seed + fold, valid=valid, **inject_kwargs)
+        ch = list(detect_channels)
+        Ztr_d, Zinj_d = Ztr[:, :, ch], Zinj[:, :, ch]
 
         for spec in detectors:
             det = make_detector(spec)
