@@ -25,7 +25,30 @@ python scripts/download_data.py      # ~34 MB into data/raw/ (not committed)
 python scripts/profile_data.py       # missingness + voltage tables and plot -> results/profile/
 python scripts/run_bench.py          # detector bench on injected anomalies -> results/bench.csv
 pytest -q                            # tests; unimplemented detectors are skipped
+python scripts/experiments/run_all.py   # every number and figure in the report -> results/RESULTS.md (~40 min)
+python scripts/run_bench.py --imputer em   # bench with EM imputation instead of forward fill
+python scripts/run_weak_labels.py       # detectors vs real failures after 20 March -> results/weak_labels.csv
+python scripts/run_stage_d.py           # predict failure from voltage history -> results/stage_d/
 ```
+
+`run_all.py --quick` is a 1-minute smoke test with fewer seeds. The pieces can
+also be run alone: `magnitude_sweep.py`, `repeated_cv.py`, `hard_variants.py`,
+`ablation.py` in `scripts/experiments/`. Detectors are fitted once per fold and
+reused across magnitudes and seeds, so the numbers match `run_bench.py` exactly
+for the same seed.
+
+## Final results
+
+The final report is [`report/final_report.pdf`](report/final_report.pdf) (LaTeX source alongside).
+
+| Finding | Number |
+| --- | --- |
+| Best detector on injected anomalies (repeated CV) | PCA/SVD AUC 0.859 vs k-sigma 0.746 (HMM 0.843) |
+| With first-difference features | GMM 0.946, KNN 0.921 (tuned on the reported folds) |
+| Event vs failure, PCA flags + logistic regression | 97.7% of event alerts kept, 95.0% of failure alerts removed |
+| Random-neighbour control | failure alerts removed drops to 88.3% |
+| Real failures (weak labels, after 20 March) | AUC 0.944 to 0.977 for all detectors |
+| Failure prediction 1 day ahead | AUC 0.969 (voltage level alone 0.961) |
 
 ## Team and ownership
 
@@ -34,9 +57,9 @@ pytest -q                            # tests; unimplemented detectors are skippe
 | 1 Data, harness & integration | Manav | `data/`, `preprocess.py`, `evaluation/`, `imputation/simple.py`, `detectors/ksigma.py`, `scripts/` | done (branch `role1-data-harness`, merged) |
 | 2 Detectors I | Rashi | `detectors/knn.py`, `detectors/kmeans.py` | done (branch `role2-knn-kmeans`) |
 | 3 Detectors II | Karthik | `detectors/pca.py`, `detectors/hmm.py` | done (branch `role3-pca-hmm`) |
-| 4 EM & imputation | Harsh | `detectors/gmm.py`, `imputation/em_gaussian.py` | TODO |
-| 5 Discrimination | Tejas | `discrimination/features.py`, `discrimination/classifiers.py` | TODO |
-| 6 Evaluation & results | Ziyad | `injection/inject.py` (v0 works), experiments, figures, results table | extend |
+| 4 EM & imputation | Harsh | `detectors/gmm.py`, `imputation/em_gaussian.py` | done (branch `role4-gmm-em`) |
+| 5 Discrimination | Tejas | `discrimination/features.py`, `discrimination/classifiers.py` | done (branch `role5-discrimination`) |
+| 6 Evaluation & results | Ziyad | `injection/inject.py`, `scripts/experiments/`, figures, `results/RESULTS.md` | done (branch `role6-evaluation`) |
 
 Each module starts with a docstring describing what it does and how.
 Cross-review pairs: Manav ↔ Ziyad, Rashi ↔ Karthik, Harsh ↔ Tejas.

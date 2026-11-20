@@ -46,6 +46,16 @@ def ffill_both(train: np.ndarray, test: np.ndarray):
     return ffill_impute(train), ffill_impute(test)
 
 
+def em_both(train: np.ndarray, test: np.ndarray):
+    """EM Gaussian imputation (Role 4) fitted on the training window only."""
+    from signoise.imputation.em_gaussian import EMGaussianImputer
+    imp = EMGaussianImputer().fit(train)
+    return ffill_impute(imp.transform(train)), ffill_impute(imp.transform(test))
+
+
+IMPUTERS = {"ffill": ffill_both, "em": em_both}
+
+
 def make_detector(spec) -> Detector:
     """spec: registry name, (name, kwargs) tuple, or a Detector instance."""
     if isinstance(spec, Detector):
@@ -98,13 +108,14 @@ def run_detection_bench(
         Xtr, Xte = imputer(data.values[tr], data.values[te])
         scaler = Standardizer(per_node=True).fit(Xtr)
         Ztr, Zte = scaler.transform(Xtr), scaler.transform(Xte)
-        Zinj, labels, episodes = inject_anomalies(
-            Zte, neighbors, seed=seed + fold, **inject_kwargs)
-        ch = list(detect_channels)
-        Ztr_d, Zinj_d = Ztr[:, :, ch], Zinj[:, :, ch]
         valid = observed[te].copy()
         if real is not None:
             valid &= ~real[te]
+        # valid is only read by inject_anomalies when quiet_only=True
+        Zinj, labels, episodes = inject_anomalies(
+            Zte, neighbors, seed=seed + fold, valid=valid, **inject_kwargs)
+        ch = list(detect_channels)
+        Ztr_d, Zinj_d = Ztr[:, :, ch], Zinj[:, :, ch]
 
         for spec in detectors:
             det = make_detector(spec)

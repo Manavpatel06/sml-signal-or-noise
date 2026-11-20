@@ -14,6 +14,7 @@ from signoise.config import RESULTS_DIR  # noqa: E402
 from signoise.data import load_intel  # noqa: E402
 from signoise.detectors import REGISTRY  # noqa: E402
 from signoise.evaluation import run_detection_bench, summarise  # noqa: E402
+from signoise.evaluation.harness import IMPUTERS  # noqa: E402
 
 
 def main() -> None:
@@ -30,6 +31,7 @@ def main() -> None:
     ap.add_argument("--end", default="2004-03-20",
                     help="stop before this date; after ~20 March most nodes are "
                          "failing, so injected-anomaly results are not meaningful")
+    ap.add_argument("--imputer", choices=list(IMPUTERS), default="ffill")
     ap.add_argument("--out", default=str(RESULTS_DIR / "bench.csv"))
     args = ap.parse_args()
 
@@ -40,6 +42,7 @@ def main() -> None:
         detectors=args.detectors,
         n_folds=args.folds,
         seed=args.seed,
+        imputer=IMPUTERS[args.imputer],
         inject_kwargs={"magnitude": args.magnitude, "n_events": args.events,
                        "n_failures": args.failures},
     )
