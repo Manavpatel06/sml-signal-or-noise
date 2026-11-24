@@ -13,9 +13,6 @@ between neighbouring nodes and the node's battery telemetry.
 Data: [Intel Berkeley Research Lab](http://db.csail.mit.edu/labdata/labdata.html),
 54 nodes, temperature / humidity / light / voltage every 31 s, 28 Feb – 5 Apr 2004.
 
-> **Teammates: read [START_HERE.md](START_HERE.md) first.** It has setup, your
-> branch name, and the exact message to give your coding agent.
-
 ## Quick start
 
 ```bash
@@ -24,7 +21,7 @@ pip install -e ".[dev]"
 python scripts/download_data.py      # ~34 MB into data/raw/ (not committed)
 python scripts/profile_data.py       # missingness + voltage tables and plot -> results/profile/
 python scripts/run_bench.py          # detector bench on injected anomalies -> results/bench.csv
-pytest -q                            # tests; unimplemented detectors are skipped
+pytest -q                            # 88 unit and contract tests
 python scripts/experiments/run_all.py   # every number and figure in the report -> results/RESULTS.md (~40 min)
 python scripts/run_bench.py --imputer em   # bench with EM imputation instead of forward fill
 python scripts/run_weak_labels.py       # detectors vs real failures after 20 March -> results/weak_labels.csv
@@ -54,12 +51,12 @@ The final report is [`report/final_report.pdf`](report/final_report.pdf) (LaTeX 
 
 | Role | Owner | Code | Status |
 | --- | --- | --- | --- |
-| 1 Data, harness & integration | Manav | `data/`, `preprocess.py`, `evaluation/`, `imputation/simple.py`, `detectors/ksigma.py`, `scripts/` | done (branch `role1-data-harness`, merged) |
-| 2 Detectors I | Rashi | `detectors/knn.py`, `detectors/kmeans.py` | done (branch `role2-knn-kmeans`) |
-| 3 Detectors II | Karthik | `detectors/pca.py`, `detectors/hmm.py` | done (branch `role3-pca-hmm`) |
-| 4 EM & imputation | Harsh | `detectors/gmm.py`, `imputation/em_gaussian.py` | done (branch `role4-gmm-em`) |
-| 5 Discrimination | Tejas | `discrimination/features.py`, `discrimination/classifiers.py` | done (branch `role5-discrimination`) |
-| 6 Evaluation & results | Ziyad | `injection/inject.py`, `scripts/experiments/`, figures, `results/RESULTS.md` | done (branch `role6-evaluation`) |
+| 1 Data, harness & integration | Manav | `data/`, `preprocess.py`, `evaluation/`, `imputation/simple.py`, `detectors/ksigma.py`, `scripts/` | done, merged |
+| 2 Detectors I | Rashi | `detectors/knn.py`, `detectors/kmeans.py` | done, merged |
+| 3 Detectors II | Karthik | `detectors/pca.py`, `detectors/hmm.py` | done, merged |
+| 4 EM & imputation | Harsh | `detectors/gmm.py`, `imputation/em_gaussian.py` | done, merged |
+| 5 Discrimination | Tejas | `discrimination/features.py`, `discrimination/classifiers.py` | done, merged |
+| 6 Evaluation & results | Ziyad | `injection/inject.py`, `scripts/experiments/`, figures, `results/RESULTS.md` | done, merged |
 
 Each module starts with a docstring describing what it does and how.
 Cross-review pairs: Manav ↔ Ziyad, Rashi ↔ Karthik, Harsh ↔ Tejas.
@@ -71,7 +68,7 @@ data/raw  ──load_intel──▶  SensorData (T steps × N nodes × C channel
                                 │
               temporal_folds ◀──┤ (contiguous test blocks, gap on each side)
                                 ▼
-          impute (ffill now, EM later) ─▶ robust z-score on train ─▶ inject events/failures into test
+          impute (forward fill or EM) ─▶ robust z-score on train ─▶ inject events/failures into test
                                                                          │
                          detectors: fit(train) → score(test) → (T, N) anomaly scores
                                                                          │
@@ -92,7 +89,7 @@ class MyDetector(Detector):          # or PointwiseDetector for per-point models
 Register it in `src/signoise/detectors/__init__.py` (`REGISTRY`). The bench and the
 contract tests in `tests/test_detectors.py` pick it up automatically.
 
-## Things the base already handles (read before changing)
+## Design decisions
 
 - **Time axis from timestamps, not `epoch`.** The epoch counter is 16-bit and resets
   around 21 March. Steps are `bin_epochs × 31 s`; default `bin_epochs=10` (~5 min,
@@ -108,14 +105,15 @@ contract tests in `tests/test_detectors.py` pick it up automatically.
   drain and would dominate every z-score; it is a Stage C feature instead.
 - **Robust standardisation** (median/MAD per node, fitted on train only).
 
-## Current baseline (k-sigma, 5 folds, data before 20 March, magnitude 4σ)
+## k-sigma baseline (5 folds, data before 20 March, magnitude 4σ)
 
 | AUC | AUC events | AUC failures | precision@k |
 | --- | --- | --- | --- |
 | 0.75 ± 0.08 | 0.72 ± 0.10 | 0.91 ± 0.02 | 0.31 ± 0.09 |
 
-Every learned detector should beat this. Events are the hard class for a
-per-node threshold, which is the point of the project.
+PCA/SVD and HMM beat it on all five folds; KNN and GMM are close to it and
+K-means falls below it. Events are the hard class for a per-node threshold,
+which is the point of the project.
 
 ## Implementation notes
 
@@ -128,8 +126,8 @@ per-node threshold, which is the point of the project.
 ## Git workflow
 
 - `main` only changes through pull requests.
-- Branch per role, created from an up-to-date `main`: `role1-data-harness`,
-  `role2-knn-kmeans`, `role3-pca-hmm`, `role4-gmm-em`, `role5-discrimination`,
-  `role6-evaluation`.
-- Open a pull request into `main`; your cross-review partner approves before merge.
+- Each role worked on its own branch (`role1-data-harness`, `role2-knn-kmeans`,
+  `role3-pca-hmm`, `role4-gmm-em`, `role5-discrimination`, `role6-evaluation`);
+  all of them are merged into `main`.
+- Changes go through a pull request reviewed by the cross-review partner.
 - `pytest -q` must pass. Never commit anything under `data/` or `results/`.
